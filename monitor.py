@@ -40,22 +40,24 @@ HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 
-AVAILABLE = "available"
-PREORDER = "preorder"
-SOLD_OUT = "sold_out"
-UNKNOWN = "unknown"
+AVAILABLE    = "available"
+PREORDER     = "preorder"
+COMING_SOON  = "coming_soon"
+SOLD_OUT     = "sold_out"
+UNKNOWN      = "unknown"
 
-# Order matters — preorder checked before available to avoid misclassifying
-# "pre-order / add to cart" buttons as simply available
+# Order matters — higher entries win on first match
 KEYWORD_MAP = [
-    (PREORDER,  ["pre-order", "preorder", "pre order", "available to pre", "preorder now"]),
-    (AVAILABLE, ["add to cart", "add to basket", "buy now", "in stock", "add to bag", "add to trolley"]),
-    (SOLD_OUT,  ["sold out", "out of stock", "unavailable", "coming soon",
-                 "notify me when", "email when available", "out of stock - email"]),
+    (PREORDER,    ["pre-order", "preorder", "pre order", "available to pre", "preorder now"]),
+    (AVAILABLE,   ["add to cart", "add to basket", "buy now", "in stock", "add to bag", "add to trolley"]),
+    (COMING_SOON, ["coming soon", "notify me when", "notify me when available",
+                   "email when available", "pre-order stock will be available",
+                   "release date", "available soon"]),
+    (SOLD_OUT,    ["sold out", "out of stock", "unavailable", "out of stock - email"]),
 ]
 
-STATUS_EMOJI = {AVAILABLE: "✅", PREORDER: "🔔", SOLD_OUT: "❌", UNKNOWN: "❓"}
-STATUS_COLOR = {AVAILABLE: 0x00C851, PREORDER: 0x33B5E5, SOLD_OUT: 0xFF4444, UNKNOWN: 0x888888}
+STATUS_EMOJI  = {AVAILABLE: "✅", PREORDER: "🔔", COMING_SOON: "⏳", SOLD_OUT: "❌", UNKNOWN: "❓"}
+STATUS_COLOR  = {AVAILABLE: 0x00C851, PREORDER: 0x33B5E5, COMING_SOON: 0xFF9800, SOLD_OUT: 0xFF4444, UNKNOWN: 0x888888}
 
 # Shopify-based shops that support the /products/{handle}.json API
 SHOPIFY_DOMAINS = {"totalcards.net", "hammerheadtcg.com"}
@@ -115,8 +117,107 @@ def _shopify_json_url(url: str) -> str | None:
     return f"{parsed.scheme}://{parsed.netloc}/products/{handle}.json"
 
 
+def _fetch_soup(url: str) -> BeautifulSoup | None:
+    try:
+        r = requests.get(url, headers=HEADERS, timeout=20)
+        r.raise_for_status()
+        return BeautifulSoup(r.text, "html.parser")
+    except requests.RequestException as exc:
+        log.warning("Failed to fetch %s: %s", url, exc)
+        return None
+
+
+def _extract_name(soup: BeautifulSoup, hint: str = "") -> str:
+    for sel in ["h1", ".product__title", ".product-title", '[itemprop="name"]', ".page-title"]:
+        el = soup.select_one(sel)
+        if el and el.get_text(strip=True):
+            return el.get_text(strip=True)
+    return hint
+
+
+def _extract_price(soup: BeautifulSoup) -> str | None:
+    og = soup.find("meta", {"property": "og:price:amount"})
+    if og and og.get("content"):
+        try:
+            return f"£{float(og['content']):.2f}"
+        except ValueError:
+            pass
+    el = soup.select_one("[data-price]")
+    if el:
+        raw = el.get("data-price", "").strip()
+        if raw:
+            try:
+                return f"£{float(raw):.2f}"
+            except ValueError:
+                pass
+    for sel in [".product__price", '[itemprop="price"]', ".regular-price",
+                ".price-item--regular", ".price-item--sale"]:
+        el = soup.select_one(sel)
+        if el:
+            txt = el.get_text(strip=True)
+            if txt:
+                return txt
+    return None
+
+
+def _extract_status(soup: BeautifulSoup) -> str:
+    """Detect status from HTML. Checks specific short elements to avoid nav pollution."""
+    status_text = ""
+
+    # Buttons and submit inputs — most reliable CTA signal
+    for btn in soup.find_all("button"):
+        status_text += " " + btn.get_text(" ", strip=True)
+    for inp in soup.find_all("input", {"type": "submit"}):
+        status_text += " " + inp.get("value", "")
+
+    # Availability-specific elements — cap at 80 chars each to skip large parent wrappers
+    # that accidentally have availability-related class names (e.g. nav containers)
+    for sel in [".availability", ".stock-status", ".product-availability",
+                ".badge", ".label", "[class*='sold-out']", "[class*='in-stock']"]:
+        for el in soup.select(sel):
+            txt = el.get_text(" ", strip=True)
+            if len(txt) <= 80:
+                status_text += " " + txt
+
+    status = detect_status_from_text(status_text)
+    if status != UNKNOWN:
+        return status
+
+    # Widen to main product area only if still unknown
+    main = soup.select_one("main, #main, .main-content, .product-detail, article")
+    area = main or soup.body or soup
+    return detect_status_from_text(area.get_text(" ", strip=True))
+
+
+def _unavail_subtype(soup: BeautifulSoup) -> str:
+    """When Shopify API confirms unavailable, check HTML to distinguish coming_soon from sold_out."""
+    # Button text is the most reliable signal — check it first
+    for btn in soup.find_all("button"):
+        t = btn.get_text(strip=True).lower()
+        if "notify me when" in t or "coming soon" in t:
+            return COMING_SOON
+        if "sold out" in t:
+            return SOLD_OUT
+
+    # Badge elements
+    for el in soup.select("[class*='badge'], [class*='label']"):
+        t = el.get_text(strip=True).lower()
+        if len(t) <= 40:
+            if "coming soon" in t:
+                return COMING_SOON
+
+    # Body-text fallback for explicit coming-soon phrases
+    body = soup.get_text(" ").lower()
+    for kw in ["coming soon", "notify me when available", "pre-order stock will be available",
+                "available soon", "release date"]:
+        if kw in body:
+            return COMING_SOON
+
+    return SOLD_OUT
+
+
 def fetch_shopify(url: str) -> tuple:
-    """Fetch product data from Shopify JSON API. Returns (name, status, price)."""
+    """Fetch product availability from Shopify JSON API. Returns (name, api_available, price=None)."""
     json_url = _shopify_json_url(url)
     if not json_url:
         return None, None, None
@@ -128,17 +229,12 @@ def fetch_shopify(url: str) -> tuple:
         name = data.get("title", "")
         variants = data.get("variants", [])
         available = any(v.get("available", False) for v in variants)
-        price = None
-        if variants:
-            raw = variants[0].get("price")
-            if raw:
-                price = f"£{float(raw):.2f}"
         if not available:
-            return name, SOLD_OUT, price
+            return name, None, None   # caller uses HTML to distinguish coming_soon/sold_out
         tags = [t.lower() for t in data.get("tags", [])]
         if any("pre" in t for t in tags) or "pre-order" in name.lower():
-            return name, PREORDER, price
-        return name, AVAILABLE, price
+            return name, PREORDER, None
+        return name, AVAILABLE, None
     except Exception as exc:
         log.debug("Shopify JSON fetch failed for %s: %s", url, exc)
         return None, None, None
@@ -146,81 +242,13 @@ def fetch_shopify(url: str) -> tuple:
 
 def fetch_html(url: str, hint_name: str = "") -> tuple:
     """Scrape HTML page for product name, status, and price."""
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=20)
-        r.raise_for_status()
-    except requests.RequestException as exc:
-        log.warning("Failed to fetch %s: %s", url, exc)
+    soup = _fetch_soup(url)
+    if soup is None:
         return hint_name or get_domain(url), UNKNOWN, None
-
-    soup = BeautifulSoup(r.text, "html.parser")
-
-    # --- Name ---
-    name = hint_name
-    for sel in ["h1", ".product__title", ".product-title", '[itemprop="name"]', ".page-title"]:
-        el = soup.select_one(sel)
-        if el and el.get_text(strip=True):
-            name = el.get_text(strip=True)
-            break
-
-    # --- Price ---
-    # og:price:amount is the most reliable — it's the canonical product price set
-    # by the store and avoids accidentally matching sidebar/related product prices.
-    price = None
-    og = soup.find("meta", {"property": "og:price:amount"})
-    if og and og.get("content"):
-        try:
-            price = f"£{float(og['content']):.2f}"
-        except ValueError:
-            pass
-    if not price:
-        # data-price attribute (common on Shopify) as second choice
-        el = soup.select_one("[data-price]")
-        if el:
-            raw = el.get("data-price", "").strip()
-            if raw:
-                try:
-                    price = f"£{float(raw):.2f}"
-                except ValueError:
-                    pass
-    if not price:
-        # Narrow CSS selectors — avoid generic .price which matches related products
-        for sel in [".product__price", '[itemprop="price"]', ".regular-price",
-                    ".price-item--regular", ".price-item--sale"]:
-            el = soup.select_one(sel)
-            if el:
-                txt = el.get_text(strip=True)
-                if txt:
-                    price = txt
-                    break
-
-    # --- Status: high-signal elements first ---
-    status_text = ""
-
-    # Buttons and submit inputs carry the clearest signal
-    for btn in soup.find_all("button"):
-        status_text += " " + btn.get_text(" ", strip=True)
-    for inp in soup.find_all("input", {"type": "submit"}):
-        status_text += " " + inp.get("value", "")
-
-    # Availability labels / badges
-    availability_classes = [
-        "availability", "stock", "product-availability", "product-stock",
-        "badge", "sold-out", "pre-order", "label--sold-out",
-    ]
-    for cls in availability_classes:
-        for el in soup.find_all(class_=lambda c, _c=cls: c and _c in c.lower()):
-            status_text += " " + el.get_text(" ", strip=True)
-
-    status = detect_status_from_text(status_text)
-
-    # Fall back to main content area if still unknown
-    if status == UNKNOWN:
-        main = soup.select_one("main, #main, .main-content, .product-detail, article")
-        area = main or soup.body or soup
-        status = detect_status_from_text(area.get_text(" ", strip=True))
-
-    return name or hint_name or get_domain(url), status, price
+    name = _extract_name(soup, hint_name) or get_domain(url)
+    price = _extract_price(soup)
+    status = _extract_status(soup)
+    return name, status, price
 
 
 def check_url(url: str, hint_name: str = "") -> tuple:
@@ -229,12 +257,17 @@ def check_url(url: str, hint_name: str = "") -> tuple:
 
     if domain in SHOPIFY_DOMAINS:
         api_name, api_status, _ = fetch_shopify(url)
+        # Fetch HTML once: provides correct VAT-inclusive price and unavailability subtype
+        soup = _fetch_soup(url)
+        if soup is None:
+            return api_name or hint_name or domain, api_status or UNKNOWN, None
+        name = api_name or _extract_name(soup, hint_name) or domain
+        price = _extract_price(soup)
         if api_status is not None:
-            log.debug("Shopify API used for %s", domain)
-            # Scrape HTML for the customer-facing price (Shopify JSON returns
-            # ex-VAT prices when requests come from non-UK servers, e.g. GitHub Actions)
-            _, _, html_price = fetch_html(url, hint_name)
-            return api_name or hint_name or domain, api_status, html_price
+            # Purchasable — JSON verdict is authoritative
+            return name, api_status, price
+        # Not purchasable — HTML tells us if it's coming_soon or sold_out
+        return name, _unavail_subtype(soup), price
 
     return fetch_html(url, hint_name)
 

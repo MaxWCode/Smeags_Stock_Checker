@@ -29,6 +29,8 @@
       --glow-g: 0 0 18px rgba(0,230,118,0.45),  0 0 60px rgba(0,230,118,0.12);
       --glow-b: 0 0 18px rgba(41,182,246,0.45), 0 0 60px rgba(41,182,246,0.12);
       --glow-a: 0 0 18px rgba(240,192,64,0.45), 0 0 60px rgba(240,192,64,0.12);
+      --amber:       #ff9800;
+      --glow-o: 0 0 18px rgba(255,152,0,0.45),  0 0 60px rgba(255,152,0,0.12);
     }
 
     html { scroll-behavior: smooth; }
@@ -166,12 +168,14 @@
       font-family:'JetBrains Mono',monospace;
       border:1px solid; transition:all .4s;
     }
-    .chip.available { color:var(--emerald); border-color:rgba(0,230,118,.28); background:rgba(0,230,118,.07); }
-    .chip.preorder  { color:var(--sapphire);border-color:rgba(41,182,246,.28); background:rgba(41,182,246,.07); }
-    .chip.sold-out  { color:var(--coral);   border-color:rgba(255,77,109,.28);  background:rgba(255,77,109,.07); }
-    .chip.unknown   { color:var(--fog);     border-color:rgba(122,142,160,.2);  background:rgba(122,142,160,.04); }
-    .chip.available.lit { box-shadow:var(--glow-g); animation:pulse-g 2.5s ease-in-out infinite; }
-    .chip.preorder.lit  { box-shadow:var(--glow-b); }
+    .chip.available    { color:var(--emerald); border-color:rgba(0,230,118,.28); background:rgba(0,230,118,.07); }
+    .chip.preorder     { color:var(--sapphire);border-color:rgba(41,182,246,.28); background:rgba(41,182,246,.07); }
+    .chip.coming-soon  { color:var(--amber);   border-color:rgba(255,152,0,.28);  background:rgba(255,152,0,.07); }
+    .chip.sold-out     { color:var(--coral);   border-color:rgba(255,77,109,.28);  background:rgba(255,77,109,.07); }
+    .chip.unknown      { color:var(--fog);     border-color:rgba(122,142,160,.2);  background:rgba(122,142,160,.04); }
+    .chip.available.lit   { box-shadow:var(--glow-g); animation:pulse-g 2.5s ease-in-out infinite; }
+    .chip.preorder.lit    { box-shadow:var(--glow-b); }
+    .chip.coming-soon.lit { box-shadow:var(--glow-o); }
     @keyframes pulse-g {
       0%,100% { box-shadow:0 0 8px rgba(0,230,118,.3); }
       50%      { box-shadow:0 0 22px rgba(0,230,118,.7),0 0 50px rgba(0,230,118,.2); }
@@ -259,6 +263,11 @@
       box-shadow:0 0 0 1px rgba(41,182,246,.1), 0 8px 30px rgba(0,0,0,.4);
     }
     .card.preorder:hover { box-shadow:0 0 0 1px rgba(41,182,246,.4), 0 20px 55px rgba(0,0,0,.5), var(--glow-b); }
+    .card.coming_soon {
+      border-color:rgba(255,152,0,.32);
+      box-shadow:0 0 0 1px rgba(255,152,0,.1), 0 8px 30px rgba(0,0,0,.4);
+    }
+    .card.coming_soon:hover { box-shadow:0 0 0 1px rgba(255,152,0,.4), 0 20px 55px rgba(0,0,0,.5), var(--glow-o); }
     .card.sold_out:hover { box-shadow:0 20px 55px rgba(0,0,0,.5); }
 
     /* Shimmer bar at top of active cards */
@@ -271,7 +280,8 @@
       background:linear-gradient(90deg,transparent,var(--emerald),transparent);
       animation:shimmer 2.8s ease-in-out infinite;
     }
-    .card.preorder .shimmer-bar span { background:linear-gradient(90deg,transparent,var(--sapphire),transparent); }
+    .card.preorder    .shimmer-bar span { background:linear-gradient(90deg,transparent,var(--sapphire),transparent); }
+    .card.coming_soon .shimmer-bar span { background:linear-gradient(90deg,transparent,var(--amber),transparent); }
     .card.sold_out .shimmer-bar span,
     .card.unknown  .shimmer-bar span { display:none; }
     @keyframes shimmer {
@@ -310,11 +320,12 @@
       letter-spacing:.08em; text-transform:uppercase;
       margin-bottom:.9rem; position:relative; overflow:hidden;
     }
-    .stamp.available { background:rgba(0,230,118,.12); color:var(--emerald); border:1px solid rgba(0,230,118,.38); }
-    .stamp.preorder  { background:rgba(41,182,246,.1);  color:var(--sapphire);border:1px solid rgba(41,182,246,.32); }
-    .stamp.sold_out  { background:rgba(255,77,109,.09); color:var(--coral);   border:1px solid rgba(255,77,109,.22); }
-    .stamp.unknown   { background:rgba(122,142,160,.07);color:var(--fog);     border:1px solid rgba(122,142,160,.18); }
-    .stamp.available::after,.stamp.preorder::after {
+    .stamp.available    { background:rgba(0,230,118,.12);  color:var(--emerald);  border:1px solid rgba(0,230,118,.38); }
+    .stamp.preorder     { background:rgba(41,182,246,.1);  color:var(--sapphire); border:1px solid rgba(41,182,246,.32); }
+    .stamp.coming_soon  { background:rgba(255,152,0,.09);  color:var(--amber);    border:1px solid rgba(255,152,0,.28); }
+    .stamp.sold_out     { background:rgba(255,77,109,.09); color:var(--coral);    border:1px solid rgba(255,77,109,.22); }
+    .stamp.unknown      { background:rgba(122,142,160,.07);color:var(--fog);      border:1px solid rgba(122,142,160,.18); }
+    .stamp.available::after,.stamp.preorder::after,.stamp.coming_soon::after {
       content:''; position:absolute; inset:0;
       background:linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent);
       animation:shimmer 2.5s ease-in-out infinite;
@@ -404,15 +415,17 @@
       from { transform:translateX(18px); opacity:0; }
       to   { transform:translateX(0);    opacity:1; }
     }
-    .hitem.available { border-left:3px solid var(--emerald); }
-    .hitem.preorder  { border-left:3px solid var(--sapphire); }
-    .hitem.sold_out  { border-left:3px solid var(--coral); }
+    .hitem.available   { border-left:3px solid var(--emerald); }
+    .hitem.preorder    { border-left:3px solid var(--sapphire); }
+    .hitem.coming_soon { border-left:3px solid var(--amber); }
+    .hitem.sold_out    { border-left:3px solid var(--coral); }
     .hprod { font-size:.72rem; font-weight:600; color:var(--pearl); margin-bottom:.28rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .hchange { display:flex; align-items:center; gap:.35rem; font-size:.63rem; font-family:'JetBrains Mono',monospace; color:var(--fog); margin-bottom:.22rem; }
     .hchange .arrow { color:var(--gold); }
-    .hchange .to.available { color:var(--emerald); }
-    .hchange .to.preorder  { color:var(--sapphire); }
-    .hchange .to.sold_out  { color:var(--coral); }
+    .hchange .to.available   { color:var(--emerald); }
+    .hchange .to.preorder    { color:var(--sapphire); }
+    .hchange .to.coming_soon { color:var(--amber); }
+    .hchange .to.sold_out    { color:var(--coral); }
     .htime { font-size:.58rem; color:var(--mist); font-family:'JetBrains Mono',monospace; }
     .hempty { text-align:center; padding:2rem; color:var(--mist); font-size:.78rem; }
     .hempty .ei { font-size:2rem; display:block; margin-bottom:.5rem; }
@@ -430,9 +443,11 @@
       transition:transform .45s cubic-bezier(.34,1.56,.64,1),opacity .45s;
     }
     .toast.show { opacity:1; transform:translateX(0); pointer-events:all; }
-    .toast.preorder { border-color:var(--sapphire); background:linear-gradient(135deg,#0d1f2b,#091520); box-shadow:var(--glow-b),0 20px 40px rgba(0,0,0,.5); }
+    .toast.preorder    { border-color:var(--sapphire); background:linear-gradient(135deg,#0d1f2b,#091520); box-shadow:var(--glow-b),0 20px 40px rgba(0,0,0,.5); }
+    .toast.coming-soon { border-color:var(--amber);    background:linear-gradient(135deg,#1f1200,#140c00); box-shadow:var(--glow-o),0 20px 40px rgba(0,0,0,.5); }
     .toast-title { font-family:'Cinzel',serif; font-size:.78rem; color:var(--emerald); font-weight:700; margin-bottom:.2rem; }
-    .toast.preorder .toast-title { color:var(--sapphire); }
+    .toast.preorder    .toast-title { color:var(--sapphire); }
+    .toast.coming-soon .toast-title { color:var(--amber); }
     .toast-body  { font-size:.74rem; color:var(--pearl); line-height:1.35; }
 
     /* ── MODAL ─────────────────────────────────────── */
@@ -575,8 +590,9 @@
 
   <!-- STATS BAR -->
   <div class="statsbar">
-    <div class="chip available" id="chipA">🟢 <span id="cntA">0</span> AVAILABLE</div>
-    <div class="chip preorder"  id="chipP">🔵 <span id="cntP">0</span> PRE-ORDER</div>
+    <div class="chip available"   id="chipA">🟢 <span id="cntA">0</span> AVAILABLE</div>
+    <div class="chip preorder"    id="chipP">🔵 <span id="cntP">0</span> PRE-ORDER</div>
+    <div class="chip coming-soon" id="chipC">🟠 <span id="cntC">0</span> COMING SOON</div>
     <div class="chip sold-out">🔴 <span id="cntS">0</span> SOLD OUT</div>
     <div class="chip unknown">⚫ <span id="cntU">0</span> UNKNOWN</div>
     <div class="stats-spacer"></div>
@@ -590,10 +606,11 @@
       <input class="search-input" id="srch" type="text" placeholder="Search products, shops…" oninput="render()">
     </div>
     <div class="ftabs">
-      <button class="ftab active" data-f="all"       onclick="setFilter(this)">All</button>
-      <button class="ftab"        data-f="available" onclick="setFilter(this)">Available</button>
-      <button class="ftab"        data-f="preorder"  onclick="setFilter(this)">Pre-order</button>
-      <button class="ftab"        data-f="sold_out"  onclick="setFilter(this)">Sold Out</button>
+      <button class="ftab active" data-f="all"          onclick="setFilter(this)">All</button>
+      <button class="ftab"        data-f="available"    onclick="setFilter(this)">Available</button>
+      <button class="ftab"        data-f="preorder"     onclick="setFilter(this)">Pre-order</button>
+      <button class="ftab"        data-f="coming_soon"  onclick="setFilter(this)">Coming Soon</button>
+      <button class="ftab"        data-f="sold_out"     onclick="setFilter(this)">Sold Out</button>
     </div>
   </div>
 
@@ -682,8 +699,8 @@ localStorage.removeItem('gls_hidden');
 function ls(k,v){ if(v===undefined)return localStorage.getItem(k); localStorage.setItem(k,v); }
 
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
-const SL = { available:'AVAILABLE', preorder:'PRE-ORDER', sold_out:'SOLD OUT', unknown:'UNKNOWN' };
-const SI = { available:'✅', preorder:'🔔', sold_out:'❌', unknown:'❓' };
+const SL = { available:'AVAILABLE', preorder:'PRE-ORDER', coming_soon:'COMING SOON', sold_out:'SOLD OUT', unknown:'UNKNOWN' };
+const SI = { available:'✅', preorder:'🔔', coming_soon:'⏳', sold_out:'❌', unknown:'❓' };
 const SHOPS = {
   'totalcards.net':'Total Cards','magicmadhouse.co.uk':'Magic Madhouse',
   'zatugames.co.uk':'Zatu Games','waylandgames.co.uk':'Wayland Games',
@@ -719,7 +736,7 @@ async function fetchData(){
       const ps=prev[u]?.status;
       if(ps && ps!==info.status){
         pushHistory(u,info.name,ps,info.status);
-        if(info.status==='available'||info.status==='preorder') showToast(info.name,info.status);
+        if(info.status==='available'||info.status==='preorder'||info.status==='coming_soon') showToast(info.name,info.status);
       }
     }
     document.getElementById('updTxt').textContent='just now';
@@ -754,7 +771,7 @@ function render(){
     updateStats(); return;
   }
 
-  const ord={available:0,preorder:1,sold_out:2,unknown:3};
+  const ord={available:0,preorder:1,coming_soon:2,sold_out:3,unknown:4};
   filtered.sort(([,a],[,b])=>(ord[a.status]??3)-(ord[b.status]??3));
 
   grid.innerHTML=filtered.map(([u,d])=>cardHTML(u,d)).join('');
@@ -792,16 +809,18 @@ function cardHTML(url,d){
 }
 
 function updateStats(){
-  const c={available:0,preorder:0,sold_out:0,unknown:0};
+  const c={available:0,preorder:0,coming_soon:0,sold_out:0,unknown:0};
   for(const {status} of Object.values(S.data)){
     c[status]=(c[status]||0)+1;
   }
   document.getElementById('cntA').textContent=c.available;
   document.getElementById('cntP').textContent=c.preorder;
+  document.getElementById('cntC').textContent=c.coming_soon;
   document.getElementById('cntS').textContent=c.sold_out;
   document.getElementById('cntU').textContent=c.unknown;
   document.getElementById('chipA').classList.toggle('lit',c.available>0);
   document.getElementById('chipP').classList.toggle('lit',c.preorder>0);
+  document.getElementById('chipC').classList.toggle('lit',c.coming_soon>0);
 }
 
 function renderHistory(){
@@ -840,10 +859,11 @@ function clearHistory(){
 let toastTimer;
 function showToast(name,status){
   const t=document.getElementById('toast');
-  const isAvail=status==='available';
-  document.getElementById('toastTitle').textContent=isAvail?'⚡ NOW IN STOCK!':'🔔 NOW AVAILABLE TO PRE-ORDER!';
+  const titles={available:'⚡ NOW IN STOCK!',preorder:'🔔 NOW AVAILABLE TO PRE-ORDER!',coming_soon:'⏳ COMING SOON!'};
+  const cls={available:'',preorder:' preorder',coming_soon:' coming-soon'};
+  document.getElementById('toastTitle').textContent=titles[status]||SL[status];
   document.getElementById('toastBody').textContent=name;
-  t.className='toast show'+(isAvail?'':' preorder');
+  t.className='toast show'+(cls[status]||'');
   clearTimeout(toastTimer);
   toastTimer=setTimeout(()=>t.classList.remove('show'),7000);
   if(Notification.permission==='granted')
