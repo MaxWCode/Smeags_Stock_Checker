@@ -508,6 +508,32 @@
     .fbadge.err { background:rgba(255,77,109,.12); color:var(--coral); border:1px solid rgba(255,77,109,.28); }
     .fbadge.ok  { background:rgba(0,230,118,.1);  color:var(--emerald);border:1px solid rgba(0,230,118,.28); }
 
+    /* ── STORE PICKER ─────────────────────────────── */
+    .store-grid {
+      display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr));
+      gap:.65rem; margin-bottom:1.2rem;
+    }
+    .store-card {
+      background:rgba(255,255,255,.03); border:1px solid var(--wave);
+      border-radius:10px; padding:.8rem .6rem;
+      display:flex; flex-direction:column; align-items:center; gap:.45rem;
+      cursor:pointer; transition:all .22s; text-align:center; user-select:none;
+    }
+    .store-card:hover { border-color:rgba(240,192,64,.4); background:rgba(240,192,64,.05); transform:translateY(-2px); }
+    .store-card.selected { border-color:var(--gold); background:rgba(240,192,64,.08); box-shadow:0 0 0 2px rgba(240,192,64,.15); }
+    .store-icon { font-size:1.6rem; line-height:1; }
+    .store-name { font-size:.68rem; font-weight:600; color:var(--pearl); font-family:'Cinzel',serif; line-height:1.2; }
+    .store-domain { font-size:.55rem; color:var(--mist); font-family:'JetBrains Mono',monospace; }
+    .store-count { font-size:.58rem; color:var(--fog); }
+    .add-step { display:none; }
+    .add-step.visible { display:block; }
+    .step-back {
+      background:none; border:none; color:var(--fog); font-size:.72rem;
+      cursor:pointer; padding:0; margin-bottom:.9rem; display:flex; align-items:center; gap:.3rem;
+      transition:color .2s;
+    }
+    .step-back:hover { color:var(--pearl); }
+
     /* ── LOADING ───────────────────────────────────── */
     .loader {
       position:fixed; inset:0; background:var(--void); z-index:9999;
@@ -662,21 +688,37 @@
 <div class="overlay" id="oAdd">
   <div class="modal">
     <button class="mclose" onclick="closeM('oAdd')">✕</button>
-    <div class="modal-title">⚓ Add to Watch List</div>
-    <div class="modal-sub">Monitor a product URL for stock and preorder changes</div>
-    <div class="fg">
-      <label class="fl">Product URL</label>
-      <input class="fi" id="aUrl" type="url" placeholder="https://totalcards.net/products/…">
+
+    <!-- Step 1: pick store -->
+    <div id="addStep1">
+      <div class="modal-title">🏪 Choose a Store</div>
+      <div class="modal-sub">Select the store you're adding a product from</div>
+      <div class="store-grid" id="storeGrid"></div>
+      <div class="macts">
+        <button class="btn btn-ghost" onclick="closeM('oAdd')">Cancel</button>
+      </div>
     </div>
-    <div class="fg">
-      <label class="fl">Name <span style="font-style:normal;opacity:.5;font-size:.6rem">(optional)</span></label>
-      <input class="fi" id="aName" type="text" placeholder="OP-16 Booster Box">
-      <div class="fhint">Leave blank — the monitor will detect it automatically.</div>
-    </div>
-    <div id="aStatus" style="display:none;margin-top:.6rem"></div>
-    <div class="macts">
-      <button class="btn btn-ghost" onclick="closeM('oAdd')">Cancel</button>
-      <button class="btn btn-gold" id="aBtn" onclick="addProduct()">⚓ Add</button>
+
+    <!-- Step 2: enter product URL -->
+    <div id="addStep2" class="add-step">
+      <button class="step-back" onclick="addGoBack()">← Back</button>
+      <div class="modal-title" id="addStoreTitle">⚓ Add Product</div>
+      <div class="modal-sub" id="addStoreSub"></div>
+      <div class="fg">
+        <label class="fl">Product URL</label>
+        <input class="fi" id="aUrl" type="url">
+        <div class="fhint" id="aUrlHint"></div>
+      </div>
+      <div class="fg">
+        <label class="fl">Name <span style="font-style:normal;opacity:.5;font-size:.6rem">(optional)</span></label>
+        <input class="fi" id="aName" type="text" placeholder="OP-16 Booster Box">
+        <div class="fhint">Leave blank — the monitor will detect it automatically.</div>
+      </div>
+      <div id="aStatus" style="display:none;margin-top:.6rem"></div>
+      <div class="macts">
+        <button class="btn btn-ghost" onclick="closeM('oAdd')">Cancel</button>
+        <button class="btn btn-gold" id="aBtn" onclick="addProduct()">⚓ Add</button>
+      </div>
     </div>
   </div>
 </div>
@@ -701,11 +743,18 @@ function ls(k,v){ if(v===undefined)return localStorage.getItem(k); localStorage.
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
 const SL = { available:'AVAILABLE', preorder:'PRE-ORDER', coming_soon:'COMING SOON', sold_out:'SOLD OUT', unknown:'UNKNOWN' };
 const SI = { available:'✅', preorder:'🔔', coming_soon:'⏳', sold_out:'❌', unknown:'❓' };
-const SHOPS = {
-  'totalcards.net':'Total Cards','magicmadhouse.co.uk':'Magic Madhouse',
-  'zatugames.co.uk':'Zatu Games','waylandgames.co.uk':'Wayland Games',
-  'hammerheadtcg.com':'Hammerhead TCG',
-};
+// Add a new entry here once scraping is verified for that store
+const STORE_REGISTRY = [
+  {
+    id:     'totalcards',
+    name:   'Total Cards',
+    domain: 'totalcards.net',
+    icon:   '🃏',
+    hint:   'https://totalcards.net/products/…',
+  },
+];
+
+const SHOPS = Object.fromEntries(STORE_REGISTRY.map(s=>[s.domain, s.name]));
 
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function domain(url){ try{return new URL(url).hostname.replace('www.','')}catch{return url} }
@@ -926,17 +975,57 @@ function saveSettings(){
   closeM('oSettings'); manualRefresh();
 }
 
+let _addStore = null;
+
 function openAdd(){
+  _addStore = null;
+  document.getElementById('addStep1').style.display='';
+  document.getElementById('addStep2').classList.remove('visible');
   document.getElementById('aUrl').value='';
   document.getElementById('aName').value='';
   document.getElementById('aStatus').style.display='none';
+  // Build store grid
+  const grid = document.getElementById('storeGrid');
+  grid.innerHTML = STORE_REGISTRY.map(s => {
+    const count = Object.values(S.data).filter(d=>{ try{return new URL(d.name||'').hostname===s.domain}catch{} return false; }).length;
+    const watching = Object.entries(S.data).filter(([u])=>u.includes(s.domain)).length;
+    return `<div class="store-card" onclick="selectStore('${s.id}')" id="sc_${s.id}">
+      <div class="store-icon">${s.icon}</div>
+      <div class="store-name">${esc(s.name)}</div>
+      <div class="store-domain">${esc(s.domain)}</div>
+      ${watching?`<div class="store-count">${watching} watching</div>`:''}
+    </div>`;
+  }).join('');
   openM('oAdd');
+}
+
+function selectStore(id){
+  _addStore = STORE_REGISTRY.find(s=>s.id===id);
+  if(!_addStore) return;
+  document.querySelectorAll('.store-card').forEach(c=>c.classList.remove('selected'));
+  document.getElementById('sc_'+id).classList.add('selected');
+  document.getElementById('addStep1').style.display='none';
+  document.getElementById('addStep2').classList.add('visible');
+  document.getElementById('addStoreTitle').textContent='⚓ Add — '+_addStore.name;
+  document.getElementById('addStoreSub').textContent='Paste a product URL from '+_addStore.domain;
+  document.getElementById('aUrl').placeholder=_addStore.hint;
+  document.getElementById('aUrlHint').textContent='Must be a '+_addStore.domain+' product URL.';
+  document.getElementById('aUrl').focus();
+}
+
+function addGoBack(){
+  _addStore = null;
+  document.getElementById('addStep1').style.display='';
+  document.getElementById('addStep2').classList.remove('visible');
 }
 
 async function addProduct(){
   const url =document.getElementById('aUrl').value.trim();
   const name=document.getElementById('aName').value.trim();
   if(!url){ setAS('err','URL is required.'); return; }
+  if(_addStore && !url.includes(_addStore.domain)){
+    setAS('err','URL must be from '+_addStore.domain); return;
+  }
   if(!S.pat){ setAS('err','PAT required — add one in ⚙ Settings first.'); return; }
   const btn=document.getElementById('aBtn');
   btn.textContent='⏳ Adding…'; btn.disabled=true;
