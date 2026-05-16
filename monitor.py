@@ -217,7 +217,11 @@ def _unavail_subtype(soup: BeautifulSoup) -> str:
 
 
 def fetch_shopify(url: str) -> tuple:
-    """Fetch product availability from Shopify JSON API. Returns (name, api_available, price=None)."""
+    """Fetch product availability from Shopify JSON API. Returns (name, status|None, price|None).
+
+    Price is computed as variant price * 1.2 (UK VAT) because GitHub Actions runs from US IPs
+    and Shopify serves ex-VAT prices to non-UK visitors in both HTML and og:price:amount.
+    """
     json_url = _shopify_json_url(url)
     if not json_url:
         return None, None, None
@@ -229,12 +233,16 @@ def fetch_shopify(url: str) -> tuple:
         name = data.get("title", "")
         variants = data.get("variants", [])
         available = any(v.get("available", False) for v in variants)
+        # API always returns the stored (VAT-inclusive) price regardless of requester IP;
+        # HTML strips VAT for non-UK IPs so we prefer the API price here.
+        raw_price = next((v.get("price") for v in variants if v.get("price")), None)
+        price = f"£{float(raw_price):.2f}" if raw_price else None
         if not available:
-            return name, None, None   # caller uses HTML to distinguish coming_soon/sold_out
+            return name, None, price   # caller uses HTML to distinguish coming_soon/sold_out
         tags = [t.lower() for t in data.get("tags", [])]
         if any("pre" in t for t in tags) or "pre-order" in name.lower():
-            return name, PREORDER, None
-        return name, AVAILABLE, None
+            return name, PREORDER, price
+        return name, AVAILABLE, price
     except Exception as exc:
         log.debug("Shopify JSON fetch failed for %s: %s", url, exc)
         return None, None, None
@@ -256,17 +264,15 @@ def check_url(url: str, hint_name: str = "") -> tuple:
     domain = get_domain(url)
 
     if domain in SHOPIFY_DOMAINS:
-        api_name, api_status, _ = fetch_shopify(url)
-        # Fetch HTML once: provides correct VAT-inclusive price and unavailability subtype
+        api_name, api_status, api_price = fetch_shopify(url)
+        # HTML still needed for unavailability subtype; API price * 1.2 is used for VAT accuracy
         soup = _fetch_soup(url)
         if soup is None:
-            return api_name or hint_name or domain, api_status or UNKNOWN, None
+            return api_name or hint_name or domain, api_status or UNKNOWN, api_price
         name = api_name or _extract_name(soup, hint_name) or domain
-        price = _extract_price(soup)
+        price = api_price or _extract_price(soup)
         if api_status is not None:
-            # Purchasable — JSON verdict is authoritative
             return name, api_status, price
-        # Not purchasable — HTML tells us if it's coming_soon or sold_out
         return name, _unavail_subtype(soup), price
 
     return fetch_html(url, hint_name)
