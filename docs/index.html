@@ -747,10 +747,15 @@ function render(){
   });
 
   if(filtered.length===0){
+    const hiddenCount=[...S.hidden].filter(u=>S.data[u]).length;
+    const msg = hiddenCount
+      ? `${hiddenCount} product${hiddenCount>1?'s':''} hidden — click "+ Add Product" to re-add to your watch list.`
+      : entries.length ? 'Try a different filter.' : 'Click "+ Add Product" to start watching.';
+    const heading = hiddenCount ? 'Nothing visible' : entries.length ? 'No matches' : 'No products yet';
     grid.innerHTML=`<div class="empty">
       <span class="ei">🗺️</span>
-      <h3>${entries.length?'No matches':'No products yet'}</h3>
-      <p>${entries.length?'Try a different filter.':'Click "Add Product" to start watching.'}</p>
+      <h3>${heading}</h3>
+      <p>${msg}</p>
     </div>`;
     updateStats(); return;
   }
@@ -794,7 +799,11 @@ function cardHTML(url,d){
 
 function updateStats(){
   const c={available:0,preorder:0,sold_out:0,unknown:0};
-  for(const {status} of Object.values(S.data)) c[status]=(c[status]||0)+1;
+  for(const [u,{status}] of Object.entries(S.data)){
+    // Hidden items only count if they're available/preorder (those always show)
+    if(S.hidden.has(u) && status!=='available' && status!=='preorder') continue;
+    c[status]=(c[status]||0)+1;
+  }
   document.getElementById('cntA').textContent=c.available;
   document.getElementById('cntP').textContent=c.preorder;
   document.getElementById('cntS').textContent=c.sold_out;
