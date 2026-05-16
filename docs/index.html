@@ -672,6 +672,7 @@ const S = {
   intv:     +ls('gls_intv') || 300,
   filter:   'all',
   data:     {},
+  hidden:   new Set(JSON.parse(ls('gls_hidden') || '[]')),
   history:  JSON.parse(ls('gls_hist') || '[]'),
   cd:       0,
   cdTimer:  null,
@@ -735,6 +736,8 @@ function render(){
   const entries=Object.entries(S.data);
 
   const filtered=entries.filter(([u,d])=>{
+    // Always show available/preorder even if hidden — never miss a stock alert
+    if(S.hidden.has(u) && d.status!=='available' && d.status!=='preorder') return false;
     if(S.filter!=='all' && d.status!==S.filter) return false;
     if(q){
       const hay=(d.name||'').toLowerCase()+' '+u.toLowerCase()+' '+shopName(u).toLowerCase();
@@ -944,26 +947,36 @@ function setAS(t,msg){
 
 async function removeProduct(btn){
   const url=btn.dataset.url;
-  if(!S.pat){ alert('A GitHub PAT is needed. Add one in Settings ⚙️'); return; }
-  if(!confirm('Stop monitoring this product?\n\n'+url)) return;
-  try{
-    const hdrs={'Authorization':'token '+S.pat,'Content-Type':'application/json'};
-    const gr=await fetch(`https://api.github.com/repos/${S.repo}/contents/products.json`,{headers:hdrs});
-    if(!gr.ok) throw new Error('Could not read products.json');
-    const fd=await gr.json();
-    let prods=JSON.parse(atob(fd.content.replace(/\n/g,'')));
-    prods=prods.filter(p=>p.url!==url);
-    const pr=await fetch(`https://api.github.com/repos/${S.repo}/contents/products.json`,{
-      method:'PUT', headers:hdrs,
-      body:JSON.stringify({
-        message:'feat: remove product from watch list',
-        content:btoa(unescape(encodeURIComponent(JSON.stringify(prods,null,2)))),
-        sha:fd.sha,
-      }),
-    });
-    if(!pr.ok) throw new Error('GitHub API error');
-    delete S.data[url]; render();
-  }catch(e){ alert('Failed: '+e.message); }
+  if(!confirm('Hide this card?\n\n'+url)) return;
+
+  // Always hide locally right away — card disappears immediately
+  S.hidden.add(url);
+  ls('gls_hidden', JSON.stringify([...S.hidden]));
+  render();
+
+  // If PAT is set, also remove from products.json so the monitor stops checking it
+  if(S.pat){
+    try{
+      const hdrs={'Authorization':'token '+S.pat,'Content-Type':'application/json'};
+      const gr=await fetch(`https://api.github.com/repos/${S.repo}/contents/products.json`,{headers:hdrs});
+      if(!gr.ok) throw new Error('Could not read products.json ('+gr.status+')');
+      const fd=await gr.json();
+      let prods=JSON.parse(atob(fd.content.replace(/\n/g,'')));
+      prods=prods.filter(p=>p.url!==url);
+      const pr=await fetch(`https://api.github.com/repos/${S.repo}/contents/products.json`,{
+        method:'PUT', headers:hdrs,
+        body:JSON.stringify({
+          message:'feat: remove product from watch list',
+          content:btoa(unescape(encodeURIComponent(JSON.stringify(prods,null,2)))),
+          sha:fd.sha,
+        }),
+      });
+      if(!pr.ok) throw new Error('GitHub API error ('+pr.status+')');
+    }catch(e){
+      // Card is already hidden — just warn, don't re-show it
+      console.warn('Could not remove from products.json:', e.message);
+    }
+  }
 }
 
 // ── STARS ────────────────────────────────────────────────────────────────────
