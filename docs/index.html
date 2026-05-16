@@ -724,9 +724,11 @@ function fmtCd(s){ const m=Math.floor(s/60),sec=s%60; return m>0?`${m}m ${sec}s`
 // ── FETCH ────────────────────────────────────────────────────────────────────
 async function fetchData(){
   if(!S.repo){ document.getElementById('updTxt').textContent='No repo set'; return false; }
-  const url=`https://raw.githubusercontent.com/${S.repo}/main/status.json?t=${Date.now()}`;
+  const apiUrl=`https://api.github.com/repos/${S.repo}/contents/status.json`;
+  const headers={'Accept':'application/vnd.github.raw+json'};
+  if(S.pat) headers['Authorization']='Bearer '+S.pat;
   try{
-    const r=await fetch(url);
+    const r=await fetch(apiUrl,{headers});
     if(!r.ok) throw new Error('HTTP '+r.status);
     const fresh=await r.json();
     const prev={...S.data};
