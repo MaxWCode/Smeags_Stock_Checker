@@ -164,14 +164,35 @@ def fetch_html(url: str, hint_name: str = "") -> tuple:
             break
 
     # --- Price ---
+    # og:price:amount is the most reliable — it's the canonical product price set
+    # by the store and avoids accidentally matching sidebar/related product prices.
     price = None
-    for sel in [".price", ".product__price", '[itemprop="price"]', ".regular-price", ".price-box"]:
-        el = soup.select_one(sel)
+    og = soup.find("meta", {"property": "og:price:amount"})
+    if og and og.get("content"):
+        try:
+            price = f"£{float(og['content']):.2f}"
+        except ValueError:
+            pass
+    if not price:
+        # data-price attribute (common on Shopify) as second choice
+        el = soup.select_one("[data-price]")
         if el:
-            txt = el.get_text(strip=True)
-            if txt:
-                price = txt
-                break
+            raw = el.get("data-price", "").strip()
+            if raw:
+                try:
+                    price = f"£{float(raw):.2f}"
+                except ValueError:
+                    pass
+    if not price:
+        # Narrow CSS selectors — avoid generic .price which matches related products
+        for sel in [".product__price", '[itemprop="price"]', ".regular-price",
+                    ".price-item--regular", ".price-item--sale"]:
+            el = soup.select_one(sel)
+            if el:
+                txt = el.get_text(strip=True)
+                if txt:
+                    price = txt
+                    break
 
     # --- Status: high-signal elements first ---
     status_text = ""
@@ -207,10 +228,13 @@ def check_url(url: str, hint_name: str = "") -> tuple:
     domain = get_domain(url)
 
     if domain in SHOPIFY_DOMAINS:
-        name, status, price = fetch_shopify(url)
-        if status is not None:
+        api_name, api_status, _ = fetch_shopify(url)
+        if api_status is not None:
             log.debug("Shopify API used for %s", domain)
-            return name or hint_name or domain, status, price
+            # Scrape HTML for the customer-facing price (Shopify JSON returns
+            # ex-VAT prices when requests come from non-UK servers, e.g. GitHub Actions)
+            _, _, html_price = fetch_html(url, hint_name)
+            return api_name or hint_name or domain, api_status, html_price
 
     return fetch_html(url, hint_name)
 
