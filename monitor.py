@@ -22,6 +22,10 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
+# GitHub Actions always runs from US IPs; Shopify serves ex-VAT prices to non-UK IPs.
+# Apply UK VAT (20%) when running in CI so the displayed price matches the UK storefront.
+_SHOPIFY_VAT = 1.2 if os.getenv("GITHUB_ACTIONS") == "true" else 1.0
+
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
 EMAIL_FROM = os.getenv("EMAIL_FROM", "")
 EMAIL_TO = os.getenv("EMAIL_TO", "")
@@ -38,8 +42,7 @@ HEADERS = {
     ),
     "Accept-Language": "en-GB,en;q=0.9",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    # Ask Shopify to serve UK VAT-inclusive prices (GitHub Actions runs from US IPs)
-    "Cookie": "_shopify_country=GB",
+    "Cookie": "_shopify_country=GB",  # hint; ignored by some stores (price fixed in fetch_shopify)
 }
 
 AVAILABLE    = "available"
@@ -231,10 +234,8 @@ def fetch_shopify(url: str) -> tuple:
         name = data.get("title", "")
         variants = data.get("variants", [])
         available = any(v.get("available", False) for v in variants)
-        # API always returns the stored (VAT-inclusive) price regardless of requester IP;
-        # HTML strips VAT for non-UK IPs so we prefer the API price here.
         raw_price = next((v.get("price") for v in variants if v.get("price")), None)
-        price = f"£{float(raw_price):.2f}" if raw_price else None
+        price = f"£{float(raw_price) * _SHOPIFY_VAT:.2f}" if raw_price else None
         if not available:
             return name, None, price   # caller uses HTML to distinguish coming_soon/sold_out
         tags = [t.lower() for t in data.get("tags", [])]
