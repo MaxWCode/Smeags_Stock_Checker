@@ -196,22 +196,28 @@ def _extract_status(soup: BeautifulSoup) -> str:
 
 def _unavail_subtype(soup: BeautifulSoup) -> str:
     """When Shopify API confirms unavailable, check HTML to distinguish coming_soon from sold_out."""
-    # Stock label elements — most explicit signal, check before buttons.
-    # Total Cards uses #stock-label; general fallback covers other Shopify themes.
-    for sel in ["#stock-label", ".stock-label"]:
-        for el in soup.select(sel):
-            t = el.get_text(strip=True).lower()
-            if len(t) <= 60:
-                if "sold out" in t or "out of stock" in t:
-                    return SOLD_OUT
-                if "coming soon" in t:
-                    return COMING_SOON
+    # Total Cards: first span.text-nowrap inside a stock-label element is the product-level status.
+    # Debug confirmed: "Sold out" for OP-11, "Coming Soon" for OP-16 and EB-05.
+    # id is "stock-label-" (trailing dash), so use starts-with selector.
+    el = soup.select_one("[id^='stock-label'] span.text-nowrap")
+    if el:
+        t = el.get_text(strip=True).lower()
+        if "coming soon" in t:
+            return COMING_SOON
+        if "sold out" in t or "out of stock" in t:
+            return SOLD_OUT
 
-    # Scope to product summary/form — cross-sell sections lower on page have their own buttons
-    product_area = (soup.select_one(
-        "form[action*='/cart'], product-form, [id^='ProductInfo-'], "
-        ".product-info, .product-summary, .product__info-wrapper"
-    ) or soup.select_one("#MainContent, main") or soup)
+    # Total Cards: #stockLevels only appears for sold-out products (says "Out of Stock").
+    el = soup.select_one("#stockLevels")
+    if el:
+        t = el.get_text(strip=True).lower()
+        if "out of stock" in t or "sold out" in t:
+            return SOLD_OUT
+        if "coming soon" in t:
+            return COMING_SOON
+
+    # Scope to product form — cross-sell sections lower on page have their own buttons.
+    product_area = (soup.select_one("form[action*='/cart'], product-form") or soup)
     for btn in product_area.find_all("button"):
         t = btn.get_text(strip=True).lower()
         if "coming soon" in t:
@@ -219,22 +225,12 @@ def _unavail_subtype(soup: BeautifulSoup) -> str:
         if "sold out" in t:
             return SOLD_OUT
 
-    # Badge/label elements
+    # Badges — whole-page but coming_soon signal only.
+    # Don't scan for sold_out — cross-sell cards pollute the page with SOLD OUT badges.
     for el in soup.select("[class*='badge'], [class*='label']"):
         t = el.get_text(strip=True).lower()
-        if len(t) <= 40:
-            if "coming soon" in t:
-                return COMING_SOON
-            if "sold out" in t:
-                return SOLD_OUT
-
-    # Body-text fallback
-    body = soup.get_text(" ").lower()
-    for kw in ["coming soon", "pre-order stock will be available", "available soon", "release date"]:
-        if kw in body:
+        if len(t) <= 40 and "coming soon" in t:
             return COMING_SOON
-    if "sold out" in body or "out of stock" in body:
-        return SOLD_OUT
 
     return SOLD_OUT
 
