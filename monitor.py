@@ -196,27 +196,45 @@ def _extract_status(soup: BeautifulSoup) -> str:
 
 def _unavail_subtype(soup: BeautifulSoup) -> str:
     """When Shopify API confirms unavailable, check HTML to distinguish coming_soon from sold_out."""
-    # Button text is the most reliable signal — check it first
-    for btn in soup.find_all("button"):
+    # Stock label elements — most explicit signal, check before buttons.
+    # Total Cards uses #stock-label; general fallback covers other Shopify themes.
+    for sel in ["#stock-label", ".stock-label"]:
+        for el in soup.select(sel):
+            t = el.get_text(strip=True).lower()
+            if len(t) <= 60:
+                if "sold out" in t or "out of stock" in t:
+                    return SOLD_OUT
+                if "coming soon" in t:
+                    return COMING_SOON
+
+    # Scope to product summary/form — cross-sell sections lower on page have their own buttons
+    product_area = (soup.select_one(
+        "form[action*='/cart'], product-form, [id^='ProductInfo-'], "
+        ".product-info, .product-summary, .product__info-wrapper"
+    ) or soup.select_one("#MainContent, main") or soup)
+    for btn in product_area.find_all("button"):
         t = btn.get_text(strip=True).lower()
-        if "notify me when" in t or "coming soon" in t:
+        if "coming soon" in t:
             return COMING_SOON
         if "sold out" in t:
             return SOLD_OUT
 
-    # Badge elements
+    # Badge/label elements
     for el in soup.select("[class*='badge'], [class*='label']"):
         t = el.get_text(strip=True).lower()
         if len(t) <= 40:
             if "coming soon" in t:
                 return COMING_SOON
+            if "sold out" in t:
+                return SOLD_OUT
 
-    # Body-text fallback for explicit coming-soon phrases
+    # Body-text fallback
     body = soup.get_text(" ").lower()
-    for kw in ["coming soon", "notify me when available", "pre-order stock will be available",
-                "available soon", "release date"]:
+    for kw in ["coming soon", "pre-order stock will be available", "available soon", "release date"]:
         if kw in body:
             return COMING_SOON
+    if "sold out" in body or "out of stock" in body:
+        return SOLD_OUT
 
     return SOLD_OUT
 
