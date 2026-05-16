@@ -38,6 +38,8 @@ HEADERS = {
     ),
     "Accept-Language": "en-GB,en;q=0.9",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    # Ask Shopify to serve UK VAT-inclusive prices (GitHub Actions runs from US IPs)
+    "Cookie": "_shopify_country=GB",
 }
 
 AVAILABLE    = "available"
@@ -217,11 +219,7 @@ def _unavail_subtype(soup: BeautifulSoup) -> str:
 
 
 def fetch_shopify(url: str) -> tuple:
-    """Fetch product availability from Shopify JSON API. Returns (name, status|None, price|None).
-
-    Price is computed as variant price * 1.2 (UK VAT) because GitHub Actions runs from US IPs
-    and Shopify serves ex-VAT prices to non-UK visitors in both HTML and og:price:amount.
-    """
+    """Fetch product availability from Shopify JSON API. Returns (name, status|None, price|None)."""
     json_url = _shopify_json_url(url)
     if not json_url:
         return None, None, None
