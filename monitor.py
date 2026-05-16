@@ -65,7 +65,7 @@ STATUS_EMOJI  = {AVAILABLE: "✅", PREORDER: "🔔", COMING_SOON: "⏳", SOLD_OU
 STATUS_COLOR  = {AVAILABLE: 0x00C851, PREORDER: 0x33B5E5, COMING_SOON: 0xFF9800, SOLD_OUT: 0xFF4444, UNKNOWN: 0x888888}
 
 # Shopify-based shops that support the /products/{handle}.json API
-SHOPIFY_DOMAINS = {"totalcards.net", "hammerheadtcg.com"}
+SHOPIFY_DOMAINS = {"totalcards.net"}
 
 
 def get_domain(url: str) -> str:
