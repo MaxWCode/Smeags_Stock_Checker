@@ -224,8 +224,6 @@
       gap:1.25rem; padding:1.25rem 2rem 5rem;
       align-items:start;
     }
-    @media(max-width:900px){ .main { grid-template-columns:1fr; } }
-
     /* ── PRODUCT GRID ──────────────────────────────── */
     .pgrid {
       display:grid;
@@ -545,11 +543,82 @@
     ::-webkit-scrollbar-track { background:var(--void); }
     ::-webkit-scrollbar-thumb { background:var(--wave); border-radius:3px; }
 
-    @media(max-width:600px){
-      .header,.statsbar,.toolbar { padding-left:1rem; padding-right:1rem; }
-      .main { padding:1rem 1rem 5rem; }
-      .brand-title { font-size:.95rem; }
+    /* ── MOBILE ≤900px ────────────────────────────── */
+    @media(max-width:900px){
+      .main { grid-template-columns:1fr; }
     }
+
+    /* ── MOBILE ≤600px ────────────────────────────── */
+    @media(max-width:600px){
+      .header { padding:.7rem 1rem; }
+      .brand-title { font-size:.88rem; }
+      .statsbar,.toolbar { padding-left:1rem; padding-right:1rem; }
+      .main { padding:1rem 1rem 6rem; }
+    }
+
+    /* ── MOBILE ≤480px  (iPhone 13 mini = 375px) ── */
+    @media(max-width:480px){
+      /* Ocean smaller so it doesn't eat the screen */
+      #ocean { height:110px; }
+
+      /* Header — single tight row */
+      .header { padding:.55rem .85rem; gap:.3rem; flex-wrap:nowrap; }
+      .brand { gap:.5rem; min-width:0; flex:1; overflow:hidden; }
+      .skull-icon { font-size:1.55rem; flex-shrink:0; }
+      .brand-title { font-size:.76rem; letter-spacing:.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .brand-sub { display:none; }
+      .hctrls { gap:.3rem; flex-shrink:0; flex-wrap:nowrap; }
+      .btn-add-label { display:none; }        /* shows just "＋" on mobile */
+      .btn { padding:.42rem .7rem; font-size:.74rem; }
+      .rring { width:34px; height:34px; }
+      .rring svg { width:34px; height:34px; }
+
+      /* Stats bar — horizontal scroll, single row */
+      .statsbar {
+        padding:.4rem .85rem; gap:.32rem;
+        flex-wrap:nowrap; overflow-x:auto;
+        -webkit-overflow-scrolling:touch;
+      }
+      .statsbar::-webkit-scrollbar { display:none; }
+      .chip { flex-shrink:0; font-size:.58rem; padding:.18rem .52rem; gap:.28rem; }
+      .stats-spacer { min-width:.5rem; flex:none; }
+      .meta-info { flex-shrink:0; white-space:nowrap; font-size:.55rem; }
+
+      /* Toolbar — stacked, filter tabs scrollable */
+      .toolbar { padding:.6rem .85rem 0; flex-direction:column; align-items:stretch; gap:.4rem; }
+      .search-wrap { max-width:100%; min-width:0; }
+      .ftabs { overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+      .ftabs::-webkit-scrollbar { display:none; }
+      .ftab { flex-shrink:0; padding:.3rem .65rem; font-size:.68rem; }
+
+      /* Main — single col, bottom clears ocean canvas */
+      .main { padding:.7rem .85rem 7.5rem; gap:.65rem; }
+
+      /* Cards — slightly more compact */
+      .card-head { padding:.4rem .85rem; }
+      .card-body { padding:.8rem .85rem .6rem; }
+      .card-foot { padding:.42rem .85rem; }
+      .card-name { font-size:.8rem; min-height:auto; margin-bottom:.65rem; }
+      .stamp { font-size:.65rem; padding:.3rem .75rem; margin-bottom:.7rem; }
+      .card-meta { gap:.28rem .55rem; margin-bottom:.6rem; }
+      .mlbl { font-size:.48rem; }
+      .mval { font-size:.72rem; }
+      .mval.price { font-size:.82rem; }
+      .cbtn { padding:.24rem .52rem; font-size:.64rem; }
+
+      /* History panel — collapsible on mobile */
+      .history-panel { position:static; top:auto; max-height:none; border-radius:var(--r); }
+      .history-panel.collapsed .hlist { display:none; }
+      .history-panel.collapsed .panel-head { border-bottom:none; }
+      .hpanel-toggle {
+        display:flex; background:none; border:none;
+        color:var(--fog); font-size:.9rem; cursor:pointer;
+        padding:.05rem .2rem; transition:transform .22s; line-height:1; flex-shrink:0;
+      }
+      .history-panel.collapsed .hpanel-toggle { transform:rotate(-90deg); }
+      .hlist { max-height:220px; }
+    }
+    @media(min-width:481px){ .hpanel-toggle { display:none; } }
   </style>
 </head>
 <body>
@@ -601,7 +670,7 @@
         </svg>
         <div class="ricon">⟳</div>
       </div>
-      <button class="btn btn-gold" onclick="openAdd()">＋ Add Product</button>
+      <button class="btn btn-gold" onclick="openAdd()">＋ <span class="btn-add-label">Add Product</span></button>
       <button class="btn btn-ghost" onclick="openSettings()">⚙</button>
     </div>
   </header>
@@ -638,8 +707,13 @@
 
     <aside class="history-panel">
       <div class="panel-head">
-        <div class="panel-title">📜 Navigator's Log <span class="panel-cnt" id="hcnt">0</span></div>
-        <button class="btn btn-danger btn-sm" onclick="clearHistory()">Clear</button>
+        <div class="panel-title" onclick="if(window.innerWidth<=480)toggleHistory()" style="cursor:default">
+          📜 Navigator's Log <span class="panel-cnt" id="hcnt">0</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:.35rem">
+          <button class="hpanel-toggle" onclick="toggleHistory()" title="Toggle log">▾</button>
+          <button class="btn btn-danger btn-sm" onclick="clearHistory()">Clear</button>
+        </div>
       </div>
       <div class="hlist" id="hlist">
         <div class="hempty"><span class="ei">🗺️</span>No changes logged yet.<br>The sea is calm.</div>
@@ -897,6 +971,9 @@ function clearHistory(){
   if(!confirm('Clear all history?')) return;
   S.history=[]; ls('gls_hist','[]'); renderHistory();
 }
+function toggleHistory(){
+  document.querySelector('.history-panel').classList.toggle('collapsed');
+}
 
 // ── TOAST ────────────────────────────────────────────────────────────────────
 let toastTimer;
@@ -1090,6 +1167,7 @@ function makeStars(){
 // ── INIT ─────────────────────────────────────────────────────────────────────
 async function init(){
   makeStars();
+  if(window.innerWidth <= 480) document.querySelector('.history-panel').classList.add('collapsed');
   try { if(Notification.permission==='default') Notification.requestPermission(); } catch(e){}
 
   if(!S.repo){
