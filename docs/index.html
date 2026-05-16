@@ -57,16 +57,12 @@
       50%      { opacity: .05; transform: scale(.4); }
     }
 
-    /* ── OCEAN WAVES ───────────────────────────────── */
-    .waves {
-      position: fixed; bottom: 0; left: 0; right: 0;
-      height: 110px; pointer-events: none; z-index: 0; opacity: .28;
+    /* ── OCEAN CANVAS ──────────────────────────────── */
+    #ocean {
+      position: fixed; bottom: 0; left: 0;
+      width: 100%; height: 170px;
+      pointer-events: none; z-index: 0;
     }
-    .wave-svg { position: absolute; bottom: 0; width: 200%; }
-    .w1 { animation: wm 9s linear infinite; }
-    .w2 { animation: wm 13s linear infinite reverse; bottom: 10px; opacity: .6; }
-    .w3 { animation: wm 6s linear infinite; bottom: 18px; opacity: .4; }
-    @keyframes wm { from{transform:translateX(0)} to{transform:translateX(-50%)} }
 
     /* ── COMPASS ───────────────────────────────────── */
     .compass-dec {
@@ -566,11 +562,7 @@
 
 <!-- Decoration -->
 <div id="stars"></div>
-<div class="waves">
-  <svg class="wave-svg w1" viewBox="0 0 1440 80"><path d="M0,40 C180,80 360,0 540,40 C720,80 900,0 1080,40 C1260,80 1440,0 1440,40 L1440,80 L0,80 Z" fill="#29b6f6"/></svg>
-  <svg class="wave-svg w2" viewBox="0 0 1440 80"><path d="M0,50 C200,10 400,70 600,50 C800,30 1000,70 1200,50 C1380,40 1440,50 1440,50 L1440,80 L0,80 Z" fill="#0d47a1"/></svg>
-  <svg class="wave-svg w3" viewBox="0 0 1440 80"><path d="M0,60 C240,20 480,80 720,60 C960,40 1200,80 1440,60 L1440,80 L0,80 Z" fill="#1a237e"/></svg>
-</div>
+<canvas id="ocean"></canvas>
 <svg class="compass-dec" viewBox="0 0 100 100" fill="none">
   <circle cx="50" cy="50" r="48" stroke="#f0c040" stroke-width="1"/>
   <circle cx="50" cy="50" r="36" stroke="#f0c040" stroke-width=".5" stroke-dasharray="4 3"/>
@@ -1117,6 +1109,92 @@ async function init(){
 }
 
 init();
+</script>
+
+<script>
+// ── CANVAS OCEAN ─────────────────────────────────────────────────────────────
+(function(){
+  const cvs = document.getElementById('ocean');
+  const ctx = cvs.getContext('2d');
+  let W = 0, H = 0, t = 0;
+
+  function resize(){
+    const dpr = window.devicePixelRatio || 1;
+    W = cvs.offsetWidth;
+    H = cvs.offsetHeight;
+    cvs.width  = W * dpr;
+    cvs.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  // 4 depth layers, back → front. Each layer = sum of 3 sinusoids.
+  // [yFrac, [amp,freq,speed,phase]×3, gradTop, gradBot]
+  const LAYERS = [
+    { yF:0.15, W:[{a:10,f:0.0070,s: 0.28,p:0.0},{a:5,f:0.0120,s:-0.20,p:1.1},{a:3,f:0.0190,s:0.42,p:2.4}], c0:'#08182c', c1:'#04060e' },
+    { yF:0.30, W:[{a:13,f:0.0082,s: 0.42,p:0.6},{a:6,f:0.0148,s:-0.31,p:2.0},{a:4,f:0.0240,s:0.58,p:0.9}], c0:'#0c2038', c1:'#070c1a' },
+    { yF:0.48, W:[{a:17,f:0.0092,s: 0.58,p:1.2},{a:8,f:0.0170,s:-0.44,p:0.5},{a:5,f:0.0280,s:0.78,p:3.1}], c0:'#112840', c1:'#090f22' },
+    { yF:0.64, W:[{a:21,f:0.0105,s: 0.76,p:1.8},{a:10,f:0.0200,s:-0.58,p:2.7},{a:6,f:0.0330,s:0.98,p:1.5}], c0:'#193a55', c1:'#0e1e32' },
+  ];
+
+  function wy(L, x){
+    let y = L.yF * H;
+    for(const w of L.W) y += w.a * Math.sin(w.f * x + t * w.s + w.p);
+    return y;
+  }
+
+  // Foam particles that ride the front wave surface
+  function mkFoam(){ return { x:Math.random()*4000, r:Math.random()*2+0.5, a:Math.random()*0.4+0.08, v:Math.random()*0.35+0.08, life:Math.random() }; }
+  const FOAM = Array.from({length:80}, mkFoam);
+
+  function frame(){
+    t += 0.016;
+    ctx.clearRect(0, 0, W, H);
+
+    for(const L of LAYERS){
+      ctx.beginPath();
+      ctx.moveTo(0, H);
+      for(let x = 0; x <= W; x += 2) ctx.lineTo(x, wy(L, x));
+      ctx.lineTo(W, H);
+      ctx.closePath();
+      const g = ctx.createLinearGradient(0, L.yF * H - 35, 0, H);
+      g.addColorStop(0, L.c0);
+      g.addColorStop(1, L.c1);
+      ctx.fillStyle = g;
+      ctx.fill();
+    }
+
+    // Subtle crest highlight on the front layer
+    const FL = LAYERS[3];
+    ctx.beginPath();
+    for(let x = 0; x <= W; x += 2){
+      const y = wy(FL, x);
+      x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = 'rgba(41,182,246,0.22)';
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+
+    // Foam
+    for(const p of FOAM){
+      p.life += 0.004;
+      p.x    += p.v;
+      const px = p.x % W;
+      const py = wy(FL, px) - p.r;
+      if(p.life > 1 || p.x > W + 60){ Object.assign(p, mkFoam()); p.x = 0; p.life = 0; continue; }
+      const fade = p.life < 0.12 ? p.life / 0.12 : p.life > 0.80 ? (1 - p.life) / 0.20 : 1;
+      ctx.beginPath();
+      ctx.arc(px, py, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,255,255,${(p.a * fade).toFixed(3)})`;
+      ctx.fill();
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  window.addEventListener('resize', resize);
+  resize();
+  frame();
+})();
 </script>
 </body>
 </html>
