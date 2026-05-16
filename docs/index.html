@@ -672,11 +672,12 @@ const S = {
   intv:     +ls('gls_intv') || 300,
   filter:   'all',
   data:     {},
-  hidden:   new Set(JSON.parse(ls('gls_hidden') || '[]')),
   history:  JSON.parse(ls('gls_hist') || '[]'),
   cd:       0,
   cdTimer:  null,
 };
+// Clear any legacy hidden list from older versions
+localStorage.removeItem('gls_hidden');
 
 function ls(k,v){ if(v===undefined)return localStorage.getItem(k); localStorage.setItem(k,v); }
 
@@ -736,8 +737,6 @@ function render(){
   const entries=Object.entries(S.data);
 
   const filtered=entries.filter(([u,d])=>{
-    // Always show available/preorder even if hidden — never miss a stock alert
-    if(S.hidden.has(u) && d.status!=='available' && d.status!=='preorder') return false;
     if(S.filter!=='all' && d.status!==S.filter) return false;
     if(q){
       const hay=(d.name||'').toLowerCase()+' '+u.toLowerCase()+' '+shopName(u).toLowerCase();
@@ -747,15 +746,10 @@ function render(){
   });
 
   if(filtered.length===0){
-    const hiddenCount=[...S.hidden].filter(u=>S.data[u]).length;
-    const msg = hiddenCount
-      ? `${hiddenCount} product${hiddenCount>1?'s':''} hidden — click "+ Add Product" to re-add to your watch list.`
-      : entries.length ? 'Try a different filter.' : 'Click "+ Add Product" to start watching.';
-    const heading = hiddenCount ? 'Nothing visible' : entries.length ? 'No matches' : 'No products yet';
     grid.innerHTML=`<div class="empty">
       <span class="ei">🗺️</span>
-      <h3>${heading}</h3>
-      <p>${msg}</p>
+      <h3>${entries.length ? 'No matches' : 'No products yet'}</h3>
+      <p>${entries.length ? 'Try a different filter.' : 'Click "+ Add Product" to start watching.'}</p>
     </div>`;
     updateStats(); return;
   }
@@ -799,9 +793,7 @@ function cardHTML(url,d){
 
 function updateStats(){
   const c={available:0,preorder:0,sold_out:0,unknown:0};
-  for(const [u,{status}] of Object.entries(S.data)){
-    // Hidden items only count if they're available/preorder (those always show)
-    if(S.hidden.has(u) && status!=='available' && status!=='preorder') continue;
+  for(const {status} of Object.values(S.data)){
     c[status]=(c[status]||0)+1;
   }
   document.getElementById('cntA').textContent=c.available;
@@ -923,7 +915,7 @@ async function addProduct(){
   const url =document.getElementById('aUrl').value.trim();
   const name=document.getElementById('aName').value.trim();
   if(!url){ setAS('err','URL is required.'); return; }
-  if(!S.pat){ setAS('err','A GitHub PAT is needed. Add one in Settings ⚙️'); return; }
+  if(!S.pat){ setAS('err','PAT required — add one in ⚙ Settings first.'); return; }
   const btn=document.getElementById('aBtn');
   btn.textContent='⏳ Adding…'; btn.disabled=true;
   try{
@@ -932,13 +924,7 @@ async function addProduct(){
     if(!gr.ok) throw new Error('Could not read products.json ('+gr.status+')');
     const fd=await gr.json();
     let prods=JSON.parse(atob(fd.content.replace(/\n/g,'')));
-    // Un-hide if previously dismissed
-    if(S.hidden.has(url)){
-      S.hidden.delete(url);
-      ls('gls_hidden',JSON.stringify([...S.hidden]));
-      render();
-    }
-    if(prods.some(p=>p.url===url)){ setAS('ok','✅ Already monitored — card is now visible again.'); setTimeout(()=>closeM('oAdd'),2200); return; }
+    if(prods.some(p=>p.url===url)){ setAS('err','Already in products.json.'); return; }
     prods.push({url,...(name?{name}:{})});
     const pr=await fetch(`https://api.github.com/repos/${S.repo}/contents/products.json`,{
       method:'PUT', headers:hdrs,
@@ -949,7 +935,7 @@ async function addProduct(){
       }),
     });
     if(!pr.ok) throw new Error('GitHub API error ('+pr.status+')');
-    setAS('ok','✅ Added! Will appear after the next monitor run (~5 min).');
+    setAS('ok','✅ Added! Card will appear after the next monitor run (~5 min).');
     setTimeout(()=>closeM('oAdd'),2800);
   }catch(e){ setAS('err',e.message); }
   finally{ btn.textContent='⚓ Add'; btn.disabled=false; }
@@ -962,36 +948,27 @@ function setAS(t,msg){
 
 async function removeProduct(btn){
   const url=btn.dataset.url;
-  if(!confirm('Hide this card?\n\n'+url)) return;
-
-  // Always hide locally right away — card disappears immediately
-  S.hidden.add(url);
-  ls('gls_hidden', JSON.stringify([...S.hidden]));
-  render();
-
-  // If PAT is set, also remove from products.json so the monitor stops checking it
-  if(S.pat){
-    try{
-      const hdrs={'Authorization':'token '+S.pat,'Content-Type':'application/json'};
-      const gr=await fetch(`https://api.github.com/repos/${S.repo}/contents/products.json`,{headers:hdrs});
-      if(!gr.ok) throw new Error('Could not read products.json ('+gr.status+')');
-      const fd=await gr.json();
-      let prods=JSON.parse(atob(fd.content.replace(/\n/g,'')));
-      prods=prods.filter(p=>p.url!==url);
-      const pr=await fetch(`https://api.github.com/repos/${S.repo}/contents/products.json`,{
-        method:'PUT', headers:hdrs,
-        body:JSON.stringify({
-          message:'feat: remove product from watch list',
-          content:btoa(unescape(encodeURIComponent(JSON.stringify(prods,null,2)))),
-          sha:fd.sha,
-        }),
-      });
-      if(!pr.ok) throw new Error('GitHub API error ('+pr.status+')');
-    }catch(e){
-      // Card is already hidden — just warn, don't re-show it
-      console.warn('Could not remove from products.json:', e.message);
-    }
-  }
+  if(!S.pat){ alert('PAT required to remove products — add one in ⚙ Settings.'); return; }
+  if(!confirm('Remove from monitoring?\n\n'+url)) return;
+  try{
+    const hdrs={'Authorization':'token '+S.pat,'Content-Type':'application/json'};
+    const gr=await fetch(`https://api.github.com/repos/${S.repo}/contents/products.json`,{headers:hdrs});
+    if(!gr.ok) throw new Error('Could not read products.json ('+gr.status+')');
+    const fd=await gr.json();
+    let prods=JSON.parse(atob(fd.content.replace(/\n/g,'')));
+    prods=prods.filter(p=>p.url!==url);
+    const pr=await fetch(`https://api.github.com/repos/${S.repo}/contents/products.json`,{
+      method:'PUT', headers:hdrs,
+      body:JSON.stringify({
+        message:'feat: remove product from watch list',
+        content:btoa(unescape(encodeURIComponent(JSON.stringify(prods,null,2)))),
+        sha:fd.sha,
+      }),
+    });
+    if(!pr.ok) throw new Error('GitHub API error ('+pr.status+')');
+    delete S.data[url];
+    render();
+  }catch(e){ alert('Failed: '+e.message); }
 }
 
 // ── STARS ────────────────────────────────────────────────────────────────────
