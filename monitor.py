@@ -389,6 +389,10 @@ def main() -> None:
                 send_alerts(name, status, price, url, timestamp)
             else:
                 log.info("First check — baseline recorded: %s is %s", name, status)
+        elif status == AVAILABLE:
+            # Repeat alert every run while available — keeps pinging the phone until bought
+            log.info("Still available — repeat alert: %s", name)
+            send_alerts(name, status, price, url, timestamp)
         else:
             log.info("No change: %s is %s", name, status)
 

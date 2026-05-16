@@ -1098,7 +1098,7 @@ function makeStars(){
 // ── INIT ─────────────────────────────────────────────────────────────────────
 async function init(){
   makeStars();
-  if(Notification.permission==='default') Notification.requestPermission();
+  try { if(Notification.permission==='default') Notification.requestPermission(); } catch(e){}
 
   if(!S.repo){
     document.getElementById('loader').classList.add('done');
@@ -1106,10 +1106,14 @@ async function init(){
     return;
   }
 
-  await fetchData();
-  render(); renderHistory();
-  document.getElementById('loader').classList.add('done');
-  startTimer();
+  try {
+    await fetchData();
+    render(); renderHistory();
+    startTimer();
+  } finally {
+    // Always dismiss the loader — even if fetchData throws on mobile/iOS
+    document.getElementById('loader').classList.add('done');
+  }
 }
 
 init();
