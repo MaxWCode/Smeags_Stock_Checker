@@ -932,7 +932,13 @@ async function addProduct(){
     if(!gr.ok) throw new Error('Could not read products.json ('+gr.status+')');
     const fd=await gr.json();
     let prods=JSON.parse(atob(fd.content.replace(/\n/g,'')));
-    if(prods.some(p=>p.url===url)){ setAS('err','Already being monitored.'); return; }
+    // Un-hide if previously dismissed
+    if(S.hidden.has(url)){
+      S.hidden.delete(url);
+      ls('gls_hidden',JSON.stringify([...S.hidden]));
+      render();
+    }
+    if(prods.some(p=>p.url===url)){ setAS('ok','✅ Already monitored — card is now visible again.'); setTimeout(()=>closeM('oAdd'),2200); return; }
     prods.push({url,...(name?{name}:{})});
     const pr=await fetch(`https://api.github.com/repos/${S.repo}/contents/products.json`,{
       method:'PUT', headers:hdrs,
