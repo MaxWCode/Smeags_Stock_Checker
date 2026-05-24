@@ -169,6 +169,13 @@ def _extract_status(soup: BeautifulSoup) -> str:
     """Detect status from HTML. Checks specific short elements to avoid nav pollution."""
     status_text = ""
 
+    # Total Cards stock-label: first span.text-nowrap is the product-level status
+    # (e.g. "Pre-Order", "Coming Soon", "Sold out") — check before buttons to bias correctly
+    for el in soup.select("[id^='stock-label'] span.text-nowrap"):
+        txt = el.get_text(" ", strip=True)
+        if len(txt) <= 60:
+            status_text += " " + txt
+
     # Buttons and submit inputs — most reliable CTA signal
     for btn in soup.find_all("button"):
         status_text += " " + btn.get_text(" ", strip=True)
@@ -247,13 +254,21 @@ def fetch_shopify(url: str) -> tuple:
         data = r.json().get("product", {})
         name = data.get("title", "")
         variants = data.get("variants", [])
-        available = any(v.get("available", False) for v in variants)
+        avail_values = [v.get("available") for v in variants]
+        explicitly_available   = any(a is True  for a in avail_values)
+        explicitly_unavailable = any(a is False for a in avail_values) and not explicitly_available
+        inventory_unknown      = all(a is None  for a in avail_values)
         raw_price = next((v.get("price") for v in variants if v.get("price")), None)
         price = f"£{float(raw_price) * _SHOPIFY_VAT:.2f}" if raw_price else None
-        if not available:
+        if explicitly_unavailable:
             return name, None, price   # caller uses HTML to distinguish coming_soon/sold_out
-        tags = [t.lower() for t in data.get("tags", [])]
-        if any("pre" in t for t in tags) or "pre-order" in name.lower():
+        if inventory_unknown:
+            # TC and some Shopify stores return null inventory — caller resolves via HTML
+            return name, UNKNOWN, price
+        # explicitly_available — check tags for pre-order signal
+        raw_tags = data.get("tags", "")
+        tag_list = [t.strip().lower() for t in raw_tags.split(",")] if isinstance(raw_tags, str) else [t.lower() for t in raw_tags]
+        if any("pre" in t for t in tag_list) or "pre-order" in name.lower():
             return name, PREORDER, price
         return name, AVAILABLE, price
     except Exception as exc:
@@ -284,6 +299,20 @@ def check_url(url: str, hint_name: str = "") -> tuple:
             return api_name or hint_name or domain, api_status or UNKNOWN, api_price
         name = api_name or _extract_name(soup, hint_name) or domain
         price = api_price or _extract_price(soup)
+        if api_status == UNKNOWN:
+            # API returned null inventory — read Total Cards stock-label directly
+            sl = soup.select_one("[id^='stock-label'] span.text-nowrap")
+            if sl:
+                t = sl.get_text(strip=True).lower()
+                if "pre-order" in t or "preorder" in t:
+                    return name, PREORDER, price
+                if "in stock" in t:
+                    return name, AVAILABLE, price
+            # No stock-label found — check HTML for a clear purchasable signal
+            html_status = _extract_status(soup)
+            if html_status in (AVAILABLE, PREORDER):
+                return name, html_status, price
+            return name, _unavail_subtype(soup), price
         if api_status is not None:
             return name, api_status, price
         return name, _unavail_subtype(soup), price
@@ -385,9 +414,9 @@ def main() -> None:
                 send_alerts(name, status, price, url, timestamp)
             else:
                 log.info("First check — baseline recorded: %s is %s", name, status)
-        elif status == AVAILABLE:
-            # Repeat alert every run while available — keeps pinging the phone until bought
-            log.info("Still available — repeat alert: %s", name)
+        elif status in (AVAILABLE, PREORDER):
+            # Repeat alert every run while buyable — keeps pinging until purchased
+            log.info("Still %s — repeat alert: %s", status, name)
             send_alerts(name, status, price, url, timestamp)
         else:
             log.info("No change: %s is %s", name, status)
