@@ -434,6 +434,10 @@ def main() -> None:
             "last_changed": timestamp if status != prev_status else prev.get("last_changed", timestamp),
         }
 
+    # Remove entries for products that are no longer in the watch list
+    active_urls = {p.get("url", "").strip() for p in products}
+    stored = {url: data for url, data in stored.items() if url in active_urls}
+
     save_status(stored)
     log.info("Done — status saved to %s", STATUS_FILE)
 

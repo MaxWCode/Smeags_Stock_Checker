@@ -992,9 +992,15 @@ function showToast(name,status){
 
 // ── TIMER ────────────────────────────────────────────────────────────────────
 const CIRC=2*Math.PI*17;
+function secsToNextBoundary(){
+  const now=new Date();
+  const elapsed=(now.getMinutes()%(S.intv/60))*60+now.getSeconds();
+  const rem=S.intv-elapsed;
+  return rem<=0?S.intv:rem;
+}
 function startTimer(){
   clearInterval(S.cdTimer);
-  S.cd=S.intv;
+  S.cd=secsToNextBoundary();
   const prog=document.getElementById('progCircle');
   prog.style.strokeDasharray=CIRC;
   S.cdTimer=setInterval(()=>{
