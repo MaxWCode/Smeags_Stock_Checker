@@ -169,12 +169,13 @@ def _extract_status(soup: BeautifulSoup) -> str:
     """Detect status from HTML. Checks specific short elements to avoid nav pollution."""
     status_text = ""
 
-    # Total Cards stock-label: first span.text-nowrap is the product-level status
-    # (e.g. "Pre-Order", "Coming Soon", "Sold out") — check before buttons to bias correctly
-    for el in soup.select("[id^='stock-label'] span.text-nowrap"):
+    # Total Cards stock-label: the span inside div.pt-3 is the product-level status.
+    # "In Stock" uses a plain <span>; other states use <span class="text-nowrap">.
+    for el in soup.select("[id^='stock-label'] div.pt-3 > span, [id^='stock-label'] span.text-nowrap"):
         txt = el.get_text(" ", strip=True)
         if len(txt) <= 60:
             status_text += " " + txt
+            break  # first match is product status; skip nested duplicates
 
     # Buttons and submit inputs — most reliable CTA signal
     for btn in soup.find_all("button"):
@@ -300,7 +301,7 @@ def check_url(url: str, hint_name: str = "") -> tuple:
         name = api_name or _extract_name(soup, hint_name) or domain
         price = api_price or _extract_price(soup)
         if api_status == UNKNOWN:
-            # API returned null inventory — read Total Cards stock-label directly
+            # API returned null inventory — map stock-label text directly (Total Cards)
             sl = soup.select_one("[id^='stock-label'] span.text-nowrap")
             if sl:
                 t = sl.get_text(strip=True).lower()
@@ -308,7 +309,11 @@ def check_url(url: str, hint_name: str = "") -> tuple:
                     return name, PREORDER, price
                 if "in stock" in t:
                     return name, AVAILABLE, price
-            # No stock-label found — check HTML for a clear purchasable signal
+                if "coming soon" in t:
+                    return name, COMING_SOON, price
+                if "sold out" in t or "out of stock" in t:
+                    return name, SOLD_OUT, price
+            # No stock-label — check HTML for purchasable signal only; unavail uses precise detector
             html_status = _extract_status(soup)
             if html_status in (AVAILABLE, PREORDER):
                 return name, html_status, price
